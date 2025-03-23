@@ -519,7 +519,7 @@ struct SwapChain {
     // when the swapchain is destroyed
     resources: Vec<Direct3D12::ID3D12Resource>,
     /// Handle is freed in [`Self::release_resources()`]
-    waitable: Foundation::HANDLE,
+    waitable: Option<Foundation::HANDLE>,
     acquired_count: usize,
     present_mode: wgt::PresentMode,
     format: wgt::TextureFormat,
@@ -1118,7 +1118,9 @@ impl crate::DynAccelerationStructure for AccelerationStructure {}
 
 impl SwapChain {
     unsafe fn release_resources(mut self) -> Dxgi::IDXGISwapChain3 {
-        unsafe { Foundation::HANDLE::free(&mut self.waitable) };
+        if let Some(waitable) = self.waitable.take() {
+            Foundation::HANDLE::free(&mut waitable);
+        }
         self.raw
     }
 
@@ -1130,14 +1132,21 @@ impl SwapChain {
             Some(duration) => duration.as_millis() as u32,
             None => Threading::INFINITE,
         };
-        match unsafe { Threading::WaitForSingleObject(self.waitable, timeout_ms) } {
-            Foundation::WAIT_ABANDONED | Foundation::WAIT_FAILED => Err(crate::SurfaceError::Lost),
-            Foundation::WAIT_OBJECT_0 => Ok(true),
-            Foundation::WAIT_TIMEOUT => Ok(false),
-            other => {
-                log::error!("Unexpected wait status: 0x{:x?}", other);
-                Err(crate::SurfaceError::Lost)
+
+        if let Some(waitable) = self.waitable {
+            match unsafe { Threading::WaitForSingleObject(waitable, timeout_ms) } {
+                Foundation::WAIT_ABANDONED | Foundation::WAIT_FAILED => {
+                    Err(crate::SurfaceError::Lost)
+                }
+                Foundation::WAIT_OBJECT_0 => Ok(true),
+                Foundation::WAIT_TIMEOUT => Ok(false),
+                other => {
+                    log::error!("Unexpected wait status: 0x{:x?}", other);
+                    Err(crate::SurfaceError::Lost)
+                }
             }
+        } else {
+            Ok(true)
         }
     }
 }
