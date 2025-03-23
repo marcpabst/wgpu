@@ -44,6 +44,7 @@ impl super::Device {
         private_caps: super::PrivateCapabilities,
         library: &Arc<D3D12Lib>,
         dxc_container: Option<Arc<shader_compilation::DxcContainer>>,
+        backend_options: wgt::Dx12BackendOptions,
     ) -> Result<Self, crate::DeviceError> {
         if private_caps
             .instance_flags
@@ -192,6 +193,7 @@ impl super::Device {
                 raw.clone(),
                 Direct3D12::D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
             )),
+            options: backend_options,
             library: Arc::clone(library),
             #[cfg(feature = "renderdoc")]
             render_doc: Default::default(),

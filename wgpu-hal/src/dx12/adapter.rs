@@ -55,6 +55,7 @@ impl super::Adapter {
         library: &Arc<D3D12Lib>,
         instance_flags: wgt::InstanceFlags,
         dxc_container: Option<Arc<shader_compilation::DxcContainer>>,
+        backend_options: wgt::Dx12BackendOptions,
     ) -> Option<crate::ExposedAdapter<super::Api>> {
         // Create the device so that we can get the capabilities.
         let device = {
@@ -519,6 +520,7 @@ impl super::Adapter {
                 presentation_timer,
                 workarounds,
                 dxc_container,
+                options: backend_options,
             },
             info,
             features,
@@ -656,6 +658,7 @@ impl crate::Adapter for super::Adapter {
             self.private_caps,
             &self.library,
             self.dxc_container.clone(),
+            self.options.clone(),
         )?;
         Ok(crate::OpenDevice {
             device,

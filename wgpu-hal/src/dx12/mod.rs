@@ -459,6 +459,7 @@ pub struct Instance {
     supports_allow_tearing: bool,
     _lib_dxgi: DxgiLib,
     flags: wgt::InstanceFlags,
+    options: wgt::Dx12BackendOptions,
     dxc_container: Option<Arc<shader_compilation::DxcContainer>>,
 }
 
@@ -519,7 +520,7 @@ pub struct SwapChain {
     // when the swapchain is destroyed
     resources: Vec<Direct3D12::ID3D12Resource>,
     /// Handle is freed in [`Self::release_resources()`]
-    waitable: Foundation::HANDLE,
+    waitable: Option<Foundation::HANDLE>,
     acquired_count: usize,
     present_mode: wgt::PresentMode,
     format: wgt::TextureFormat,
@@ -591,6 +592,7 @@ pub struct Adapter {
     #[allow(unused)]
     workarounds: Workarounds,
     dxc_container: Option<Arc<shader_compilation::DxcContainer>>,
+    options: wgt::Dx12BackendOptions,
 }
 
 unsafe impl Send for Adapter {}
@@ -642,6 +644,7 @@ pub struct Device {
     private_caps: PrivateCapabilities,
     features: wgt::Features,
     shared: Arc<DeviceShared>,
+    options: wgt::Dx12BackendOptions,
     // CPU only pools
     rtv_pool: Mutex<descriptor::CpuPool>,
     dsv_pool: Mutex<descriptor::CpuPool>,
@@ -1124,7 +1127,9 @@ impl crate::DynAccelerationStructure for AccelerationStructure {}
 
 impl SwapChain {
     unsafe fn release_resources(mut self) -> Dxgi::IDXGISwapChain3 {
-        unsafe { Foundation::HANDLE::free(&mut self.waitable) };
+        if let Some(mut waitable) = self.waitable.take() {
+            Foundation::HANDLE::free(&mut waitable);
+        }
         self.raw
     }
 
@@ -1136,14 +1141,21 @@ impl SwapChain {
             Some(duration) => duration.as_millis() as u32,
             None => Threading::INFINITE,
         };
-        match unsafe { Threading::WaitForSingleObject(self.waitable, timeout_ms) } {
-            Foundation::WAIT_ABANDONED | Foundation::WAIT_FAILED => Err(crate::SurfaceError::Lost),
-            Foundation::WAIT_OBJECT_0 => Ok(true),
-            Foundation::WAIT_TIMEOUT => Ok(false),
-            other => {
-                log::error!("Unexpected wait status: 0x{:x?}", other);
-                Err(crate::SurfaceError::Lost)
+
+        if let Some(waitable) = self.waitable {
+            match unsafe { Threading::WaitForSingleObject(waitable, timeout_ms) } {
+                Foundation::WAIT_ABANDONED | Foundation::WAIT_FAILED => {
+                    Err(crate::SurfaceError::Lost)
+                }
+                Foundation::WAIT_OBJECT_0 => Ok(true),
+                Foundation::WAIT_TIMEOUT => Ok(false),
+                other => {
+                    log::error!("Unexpected wait status: 0x{:x?}", other);
+                    Err(crate::SurfaceError::Lost)
+                }
             }
+        } else {
+            Ok(true)
         }
     }
 
@@ -1315,7 +1327,12 @@ impl crate::Surface for Surface {
 
         unsafe { swap_chain.SetMaximumFrameLatency(config.maximum_frame_latency) }
             .into_device_result("SetMaximumFrameLatency")?;
-        let waitable = unsafe { swap_chain.GetFrameLatencyWaitableObject() };
+
+        let waitable = if device.options.use_latency_waitable_object {
+            Some(unsafe { swap_chain.GetFrameLatencyWaitableObject() })
+        } else {
+            None
+        };
 
         let mut resources = Vec::with_capacity(swap_chain_buffer as usize);
         for i in 0..swap_chain_buffer {

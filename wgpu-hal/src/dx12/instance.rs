@@ -112,6 +112,7 @@ impl crate::Instance for super::Instance {
             supports_allow_tearing,
             flags: desc.flags,
             dxc_container,
+            options: desc.backend_options.dx12.clone(),
         })
     }
 
@@ -144,7 +145,13 @@ impl crate::Instance for super::Instance {
         adapters
             .into_iter()
             .filter_map(|raw| {
-                super::Adapter::expose(raw, &self.library, self.flags, self.dxc_container.clone())
+                super::Adapter::expose(
+                    raw,
+                    &self.library,
+                    self.flags,
+                    self.dxc_container.clone(),
+                    self.options.clone(),
+                )
             })
             .collect()
     }
