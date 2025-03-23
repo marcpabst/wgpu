@@ -551,6 +551,23 @@ pub struct Surface {
 unsafe impl Send for Surface {}
 unsafe impl Sync for Surface {}
 
+impl Surface {
+    pub unsafe fn wait_for_frame_latency_object(
+        &self,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<bool, crate::SurfaceError> {
+        match self.options.latency_waitable_object {
+            wgt::Dx12UseFrameLatencyWaitableObject::None => Ok(false),
+            wgt::Dx12UseFrameLatencyWaitableObject::Wait
+            | wgt::Dx12UseFrameLatencyWaitableObject::DontWait => {
+                let mut swapchain = self.swap_chain.write();
+                let sc = swapchain.as_mut().unwrap();
+                unsafe { sc.wait(timeout) }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum MemoryArchitecture {
     Unified {
