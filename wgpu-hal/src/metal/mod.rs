@@ -402,6 +402,16 @@ impl std::borrow::Borrow<Texture> for SurfaceTexture {
     }
 }
 
+impl SurfaceTexture {
+    pub fn texture(&self) -> &Texture {
+        &self.texture
+    }
+
+    pub fn drawable(&self) -> &metal::MetalDrawable {
+        &self.drawable
+    }
+}
+
 impl std::borrow::Borrow<dyn crate::DynTexture> for SurfaceTexture {
     fn borrow(&self) -> &dyn crate::DynTexture {
         &self.texture
