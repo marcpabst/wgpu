@@ -535,15 +535,6 @@ struct SwapChain {
     present_mode: wgt::PresentMode,
     format: wgt::TextureFormat,
     size: wgt::Extent3d,
-    options: wgt::Dx12BackendOptions,
-}
-
-impl SwapChain {
-    /// Returns the waitable handle associated with this swap chain, if any.
-    /// Handle is only valid while the swap chain is alive.
-    pub unsafe fn waitable_handle(&self) -> Option<Foundation::HANDLE> {
-        self.waitable
-    }
 }
 
 enum SurfaceTarget {
@@ -570,6 +561,12 @@ unsafe impl Sync for Surface {}
 impl Surface {
     pub fn swap_chain(&self) -> Option<Dxgi::IDXGISwapChain3> {
         Some(self.swap_chain.read().as_ref()?.raw.clone())
+    }
+
+    /// Returns the waitable handle associated with this swap chain, if any.
+    /// Handle is only valid while the swap chain is alive.
+    pub unsafe fn waitable_handle(&self) -> Option<Foundation::HANDLE> {
+        self.swap_chain.read().as_ref()?.waitable
     }
 }
 
@@ -1413,7 +1410,6 @@ impl crate::Surface for Surface {
             present_mode: config.present_mode,
             format: config.format,
             size: config.extent,
-            options: device.options.clone(),
         });
 
         Ok(())
