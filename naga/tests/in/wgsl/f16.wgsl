@@ -51,6 +51,9 @@ var<storage, read_write> output: UniformCompatible;
 var<storage, read_write> output_arrays: StorageCompatible;
 
 fn f16_function(x: f16) -> f16 {
+   _ = private_variable;
+   var l: LayoutTest;
+
    var val: f16 = f16(constant_variable);
    // A number too big for f16
    val += 1h - 33333h;
@@ -60,6 +63,15 @@ fn f16_function(x: f16) -> f16 {
    val += f16(input_uniform.val_f32 + f32(val));
    // Constructing a vec3<i64> from a i64
    val += vec3<f16>(input_uniform.val_f16).z;
+
+   // Cast min and max finite f16 literals to other types. Max value should convert
+   // exactly to other types, but min (or any negative) should clamp to zero for u32.
+   output.val_i32 = i32(65504h);
+   output.val_i32 = i32(-65504h);
+   output.val_u32 = u32(65504h);
+   output.val_u32 = u32(-65504h);
+   output.val_f32 = f32(65504h);
+   output.val_f32 = f32(-65504h);
 
    // Reading/writing to a uniform/storage buffer
    output.val_f16 = input_uniform.val_f16 + input_storage.val_f16;
@@ -124,4 +136,3 @@ fn f16_function(x: f16) -> f16 {
 fn main() {
    output.final_value = f16_function(2h);
 }
-

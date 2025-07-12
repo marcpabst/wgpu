@@ -1,7 +1,8 @@
+use crate::utils;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
 use std::ops::IndexMut;
-use std::{borrow::Cow, future::Future, iter, mem, pin::Pin, task, time::Instant};
+use std::{borrow::Cow, future::Future, iter, mem, pin::Pin, task};
 use wgpu::util::DeviceExt;
 
 // from cube
@@ -98,23 +99,26 @@ struct Example {
     uniforms: Uniforms,
     uniform_buf: wgpu::Buffer,
     blas: wgpu::Blas,
-    tlas_package: wgpu::TlasPackage,
+    tlas: wgpu::Tlas,
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    start_inst: Instant,
+    animation_timer: utils::AnimationTimer,
 }
 
 impl crate::framework::Example for Example {
     fn required_features() -> wgpu::Features {
         wgpu::Features::EXPERIMENTAL_RAY_QUERY
-            | wgpu::Features::EXPERIMENTAL_RAY_TRACING_ACCELERATION_STRUCTURE
     }
 
     fn required_downlevel_capabilities() -> wgpu::DownlevelCapabilities {
-        wgpu::DownlevelCapabilities::default()
+        wgpu::DownlevelCapabilities {
+            flags: wgpu::DownlevelFlags::COMPUTE_SHADERS,
+            ..Default::default()
+        }
     }
+
     fn required_limits() -> wgpu::Limits {
-        wgpu::Limits::default()
+        wgpu::Limits::default().using_minimum_supported_acceleration_structure_values()
     }
 
     fn init(
@@ -233,8 +237,6 @@ impl crate::framework::Example for Example {
             ],
         });
 
-        let tlas_package = wgpu::TlasPackage::new(tlas);
-
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
@@ -255,21 +257,19 @@ impl crate::framework::Example for Example {
                 ]),
             }),
             // iter::empty(),
-            iter::once(&tlas_package),
+            iter::once(&tlas),
         );
 
         queue.submit(Some(encoder.finish()));
-
-        let start_inst = Instant::now();
 
         Example {
             uniforms,
             uniform_buf,
             blas,
-            tlas_package,
+            tlas,
             pipeline,
             bind_group,
-            start_inst,
+            animation_timer: utils::AnimationTimer::default(),
         }
     }
 
@@ -302,11 +302,11 @@ impl crate::framework::Example for Example {
 
             let side_count = 8;
 
-            let anim_time = self.start_inst.elapsed().as_secs_f64() as f32;
+            let anim_time = self.animation_timer.time();
 
             for x in 0..side_count {
                 for y in 0..side_count {
-                    let instance = self.tlas_package.index_mut((x + y * side_count) as usize);
+                    let instance = self.tlas.index_mut((x + y * side_count) as usize);
 
                     let x = x as f32 / (side_count - 1) as f32;
                     let y = y as f32 / (side_count - 1) as f32;
@@ -338,13 +338,14 @@ impl crate::framework::Example for Example {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        encoder.build_acceleration_structures(iter::empty(), iter::once(&self.tlas_package));
+        encoder.build_acceleration_structures(iter::empty(), iter::once(&self.tlas));
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
@@ -377,15 +378,7 @@ static TEST: crate::framework::ExampleTestParams = crate::framework::ExampleTest
     width: 1024,
     height: 768,
     optional_features: wgpu::Features::default(),
-    base_test_parameters: wgpu_test::TestParameters {
-        required_features: <Example as crate::framework::Example>::required_features(),
-        required_limits: <Example as crate::framework::Example>::required_limits(),
-        skips: vec![],
-        failures: Vec::new(),
-        required_downlevel_caps:
-            <Example as crate::framework::Example>::required_downlevel_capabilities(),
-        ..Default::default()
-    },
+    base_test_parameters: wgpu_test::TestParameters::default(),
     comparisons: &[wgpu_test::ComparisonType::Mean(0.02)],
     _phantom: std::marker::PhantomData::<Example>,
 };

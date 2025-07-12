@@ -14,7 +14,9 @@ use winit::{
 
 use std::{
     borrow::{Borrow, Cow},
-    iter, ptr,
+    iter,
+    num::NonZeroU64,
+    ptr,
     time::Instant,
 };
 
@@ -94,6 +96,7 @@ impl<A: hal::Api> Example<A> {
         let instance_desc = hal::InstanceDescriptor {
             name: "example",
             flags: wgpu_types::InstanceFlags::from_build_config().with_env(),
+            memory_budget_thresholds: wgpu_types::MemoryBudgetThresholds::default(),
             // Can't rely on having DXC available, so use FXC instead
             backend_options: wgpu_types::BackendOptions::default(),
         };
@@ -444,11 +447,12 @@ impl<A: hal::Api> Example<A> {
         let texture_view = unsafe { device.create_texture_view(&texture, &view_desc).unwrap() };
 
         let global_group = {
-            let global_buffer_binding = hal::BufferBinding {
-                buffer: &global_buffer,
-                offset: 0,
-                size: None,
-            };
+            // SAFETY: This is the same size that was specified for buffer creation.
+            let global_buffer_binding = hal::BufferBinding::new_unchecked(
+                &global_buffer,
+                0,
+                NonZeroU64::new(global_buffer_desc.size),
+            );
             let texture_binding = hal::TextureBinding {
                 view: &texture_view,
                 usage: wgpu_types::TextureUses::RESOURCE,
@@ -482,11 +486,12 @@ impl<A: hal::Api> Example<A> {
         };
 
         let local_group = {
-            let local_buffer_binding = hal::BufferBinding {
-                buffer: &local_buffer,
-                offset: 0,
-                size: wgpu_types::BufferSize::new(size_of::<Locals>() as _),
-            };
+            // SAFETY: The size must fit within the buffer.
+            let local_buffer_binding = hal::BufferBinding::new_unchecked(
+                &local_buffer,
+                0,
+                wgpu_types::BufferSize::new(size_of::<Locals>() as _),
+            );
             let local_group_desc = hal::BindGroupDescriptor {
                 label: Some("local"),
                 layout: &local_group_layout,
@@ -707,6 +712,7 @@ impl<A: hal::Api> Example<A> {
                     view: &surface_tex_view,
                     usage: wgpu_types::TextureUses::COLOR_TARGET,
                 },
+                depth_slice: None,
                 resolve_target: None,
                 ops: hal::AttachmentOps::STORE,
                 clear_value: wgpu_types::Color {
@@ -722,7 +728,7 @@ impl<A: hal::Api> Example<A> {
             occlusion_query_set: None,
         };
         unsafe {
-            ctx.encoder.begin_render_pass(&pass_desc);
+            ctx.encoder.begin_render_pass(&pass_desc).unwrap();
             ctx.encoder.set_render_pipeline(&self.pipeline);
             ctx.encoder
                 .set_bind_group(&self.pipeline_layout, 0, &self.global_group, &[]);

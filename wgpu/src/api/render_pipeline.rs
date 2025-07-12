@@ -28,6 +28,12 @@ impl RenderPipeline {
         let layout = self.inner.get_bind_group_layout(index);
         BindGroupLayout { inner: layout }
     }
+
+    #[cfg(custom)]
+    /// Returns custom implementation of RenderPipeline (if custom backend and is internally T)
+    pub fn as_custom<T: custom::RenderPipelineInterface>(&self) -> Option<&T> {
+        self.inner.as_custom()
+    }
 }
 
 /// Specifies an interpretation of the bytes of a vertex buffer as vertex attributes.
@@ -70,7 +76,7 @@ impl RenderPipeline {
 pub struct VertexBufferLayout<'a> {
     /// The stride, in bytes, between elements of this buffer (between vertices).
     ///
-    /// This must be a multiple of [`VERTEX_STRIDE_ALIGNMENT`].
+    /// This must be a multiple of [`VERTEX_ALIGNMENT`].
     pub array_stride: BufferAddress,
     /// How often this vertex buffer is "stepped" forward.
     pub step_mode: VertexStepMode,

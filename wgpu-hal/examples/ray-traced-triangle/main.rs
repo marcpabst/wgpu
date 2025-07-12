@@ -238,6 +238,7 @@ impl<A: hal::Api> Example<A> {
         let instance_desc = hal::InstanceDescriptor {
             name: "example",
             flags: wgpu_types::InstanceFlags::default(),
+            memory_budget_thresholds: wgpu_types::MemoryBudgetThresholds::default(),
             backend_options: wgpu_types::BackendOptions {
                 dx12: Dx12BackendOptions {
                     shader_compiler: wgpu_types::Dx12Compiler::default_dynamic_dxc(),
@@ -603,10 +604,13 @@ impl<A: hal::Api> Example<A> {
         let texture_view = unsafe { device.create_texture_view(&texture, &view_desc).unwrap() };
 
         let bind_group = {
-            let buffer_binding = hal::BufferBinding {
-                buffer: &uniform_buffer,
-                offset: 0,
-                size: None,
+            let buffer_binding = unsafe {
+                // SAFETY: The size matches the buffer allocation.
+                hal::BufferBinding::new_unchecked(
+                    &uniform_buffer,
+                    0,
+                    wgpu_types::BufferSize::new_unchecked(uniforms_size as u64),
+                )
             };
             let texture_binding = hal::TextureBinding {
                 view: &texture_view,

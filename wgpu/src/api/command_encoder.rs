@@ -1,10 +1,7 @@
 use core::ops::Range;
 
 use crate::{
-    api::{
-        blas::BlasBuildEntry,
-        tlas::{TlasBuildEntry, TlasPackage},
-    },
+    api::{blas::BlasBuildEntry, tlas::Tlas},
     *,
 };
 
@@ -116,14 +113,14 @@ impl CommandEncoder {
         source_offset: BufferAddress,
         destination: &Buffer,
         destination_offset: BufferAddress,
-        copy_size: BufferAddress,
+        copy_size: impl Into<Option<BufferAddress>>,
     ) {
         self.inner.copy_buffer_to_buffer(
             &source.inner,
             source_offset,
             &destination.inner,
             destination_offset,
-            copy_size,
+            copy_size.into(),
         );
     }
 
@@ -262,6 +259,12 @@ impl CommandEncoder {
             hal_command_encoder_callback(None)
         }
     }
+
+    #[cfg(custom)]
+    /// Returns custom implementation of CommandEncoder (if custom backend and is internally T)
+    pub fn as_custom<T: custom::CommandEncoderInterface>(&self) -> Option<&T> {
+        self.inner.as_custom()
+    }
 }
 
 /// [`Features::TIMESTAMP_QUERY_INSIDE_ENCODERS`] must be enabled on the device in order to call these functions.
@@ -283,8 +286,24 @@ impl CommandEncoder {
     }
 }
 
-/// [`Features::EXPERIMENTAL_RAY_TRACING_ACCELERATION_STRUCTURE`] must be enabled on the device in order to call these functions.
+/// [`Features::EXPERIMENTAL_RAY_QUERY`] must be enabled on the device in order to call these functions.
 impl CommandEncoder {
+    /// Mark acceleration structures as being built. ***Should only*** be used with wgpu-hal
+    /// functions, all wgpu functions already mark acceleration structures as built.
+    ///
+    /// # Safety
+    ///
+    /// - All acceleration structures must have been build in this command encoder.
+    /// - All BLASes inputted must have been built before all TLASes that were inputted here and
+    ///   which use them.
+    pub unsafe fn mark_acceleration_structures_built<'a>(
+        &self,
+        blas: impl IntoIterator<Item = &'a Blas>,
+        tlas: impl IntoIterator<Item = &'a Tlas>,
+    ) {
+        self.inner
+            .mark_acceleration_structures_built(&mut blas.into_iter(), &mut tlas.into_iter())
+    }
     /// Build bottom and top level acceleration structures.
     ///
     /// Builds the BLASes then the TLASes, but does ***not*** build the BLASes into the TLASes,
@@ -304,7 +323,7 @@ impl CommandEncoder {
     ///   - Each BLAS in each TLAS instance must have been being built in the current call or in a previous call to `build_acceleration_structures` or `build_acceleration_structures_unsafe_tlas`
     ///   - The number of TLAS instances must be less than or equal to the max number of tlas instances when creating (if creating a package with `TlasPackage::new()` this is already satisfied)
     ///
-    /// If the device the command encoder is created from does not have [Features::EXPERIMENTAL_RAY_TRACING_ACCELERATION_STRUCTURE] enabled then a validation error is generated
+    /// If the device the command encoder is created from does not have [Features::EXPERIMENTAL_RAY_QUERY] enabled then a validation error is generated
     ///
     /// A bottom level acceleration structure may be build and used as a reference in a top level acceleration structure in the same invocation of this function.
     ///
@@ -315,36 +334,14 @@ impl CommandEncoder {
     ///    - All the bottom level acceleration structures referenced by the top level acceleration structure are valid and have been built prior,
     ///      or at same time as the containing top level acceleration structure.
     ///
-    /// [Features::EXPERIMENTAL_RAY_TRACING_ACCELERATION_STRUCTURE]: wgt::Features::EXPERIMENTAL_RAY_TRACING_ACCELERATION_STRUCTURE
+    /// [Features::EXPERIMENTAL_RAY_QUERY]: wgt::Features::EXPERIMENTAL_RAY_QUERY
     pub fn build_acceleration_structures<'a>(
         &mut self,
         blas: impl IntoIterator<Item = &'a BlasBuildEntry<'a>>,
-        tlas: impl IntoIterator<Item = &'a TlasPackage>,
+        tlas: impl IntoIterator<Item = &'a Tlas>,
     ) {
         self.inner
             .build_acceleration_structures(&mut blas.into_iter(), &mut tlas.into_iter());
-    }
-
-    /// Build bottom and top level acceleration structures.
-    /// See [`CommandEncoder::build_acceleration_structures`] for the safe version and more details. All validation in [`CommandEncoder::build_acceleration_structures`] except that
-    /// listed under tlas applies here as well.
-    ///
-    /// # Safety
-    ///
-    ///    - The contents of the raw instance buffer must be valid for the underling api.
-    ///    - All bottom level acceleration structures, referenced in the raw instance buffer must be valid and built,
-    ///      when the corresponding top level acceleration structure is built. (builds may happen in the same invocation of this function).
-    ///    - At the time when the top level acceleration structure is used in a bind group, all associated bottom level acceleration structures must be valid,
-    ///      and built (no later than the time when the top level acceleration structure was built).
-    pub unsafe fn build_acceleration_structures_unsafe_tlas<'a>(
-        &mut self,
-        blas: impl IntoIterator<Item = &'a BlasBuildEntry<'a>>,
-        tlas: impl IntoIterator<Item = &'a TlasBuildEntry<'a>>,
-    ) {
-        self.inner.build_acceleration_structures_unsafe_tlas(
-            &mut blas.into_iter(),
-            &mut tlas.into_iter(),
-        );
     }
 
     /// Transition resources to an underlying hal resource state.
