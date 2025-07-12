@@ -462,6 +462,7 @@ pub struct Instance {
     flags: wgt::InstanceFlags,
     memory_budget_thresholds: wgt::MemoryBudgetThresholds,
     compiler_container: Arc<shader_compilation::CompilerContainer>,
+    options: wgt::Dx12BackendOptions,
 }
 
 impl Instance {
@@ -534,11 +535,14 @@ struct SwapChain {
     present_mode: wgt::PresentMode,
     format: wgt::TextureFormat,
     size: wgt::Extent3d,
+    options: wgt::Dx12BackendOptions,
 }
 
 impl SwapChain {
-    pub unsafe fn waitable_handle(&self) -> Foundation::HANDLE {
-        return self.waitable.clone();
+    /// Returns the waitable handle associated with this swap chain, if any.
+    /// Handle is only valid while the swap chain is alive.
+    pub unsafe fn waitable_handle(&self) -> Option<Foundation::HANDLE> {
+        self.waitable
     }
 }
 
@@ -609,6 +613,7 @@ pub struct Adapter {
     workarounds: Workarounds,
     memory_budget_thresholds: wgt::MemoryBudgetThresholds,
     compiler_container: Arc<shader_compilation::CompilerContainer>,
+    options: wgt::Dx12BackendOptions,
 }
 
 unsafe impl Send for Adapter {}
@@ -1408,6 +1413,7 @@ impl crate::Surface for Surface {
             present_mode: config.present_mode,
             format: config.format,
             size: config.extent,
+            options: device.options.clone(),
         });
 
         Ok(())

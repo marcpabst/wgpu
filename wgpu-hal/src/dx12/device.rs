@@ -48,6 +48,7 @@ impl super::Device {
         library: &Arc<D3D12Lib>,
         memory_budget_thresholds: wgt::MemoryBudgetThresholds,
         compiler_container: Arc<shader_compilation::CompilerContainer>,
+        backend_options: wgt::Dx12BackendOptions,
     ) -> Result<Self, crate::DeviceError> {
         if private_caps
             .instance_flags
