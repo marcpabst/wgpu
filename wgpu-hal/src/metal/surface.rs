@@ -22,8 +22,47 @@ use crate::metal::layer_observer::new_observer_layer;
 #[link(name = "QuartzCore", kind = "framework")]
 extern "C" {}
 
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {}
+
+use core::ffi::c_void;
+
+#[repr(C)]
+pub struct __CFString(c_void);
+pub type CFStringRef = *const __CFString;
+
+#[repr(C)]
+pub struct __CGColorSpace(c_void);
+pub type CGColorSpaceRef = *mut __CGColorSpace;
+
+extern "C" {
+    fn CGColorSpaceCreateDeviceRGB() -> CGColorSpaceRef;
+    fn CGColorSpaceRelease(space: CGColorSpaceRef);
+    fn CGColorSpaceCreateWithName(name: CFStringRef) -> CGColorSpaceRef;
+
+    // Color space name constants
+    static kCGColorSpaceDisplayP3: CFStringRef;
+}
+
 impl super::Surface {
     fn new(layer: metal::MetalLayer) -> Self {
+        // this is bad, but we do it anyway!
+
+        // set the colorspace to device RGB
+        unsafe {
+            // let cs: CGColorSpaceRef = CGColorSpaceCreateDeviceRGB();
+            // Create a Display P3 color space
+            let cs: CGColorSpaceRef = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
+            let () = msg_send![layer.as_ref(), setColorspace: cs];
+            // also set the pixel format to  MTLPixelFormat::RGB10A2Unorm
+            let pf = metal::MTLPixelFormat::RGB10A2Unorm;
+            layer.set_pixel_format(pf);
+            // make sure the layer is opaque
+            layer.set_opaque(true);
+            // release the colorspace object
+            CGColorSpaceRelease(cs);
+        }
+
         Self {
             render_layer: Mutex::new(layer),
             swapchain_format: RwLock::new(None),
